@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#171717" />
     <meta name="description" content="Kuma's Dock — 個人常用連結選單" />
-    <title>Kuma's Dock v1.3</title>
+    <title>Kuma's Dock v1.4.1</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&amp;icon_names=add,calendar_month,category,chat,cloud,delete,description,drag_indicator,edit,event,favorite,flight,folder,group,health_and_safety,home,language,link,lock,mail,map,medical_services,monitoring,movie,music_note,payments,person,restaurant,school,search,settings,shopping_cart,star,work&amp;display=block" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -19,9 +20,14 @@
         <button class="brand" type="button" data-page-link="dock" aria-label="回到 Dock 首頁">
           <span class="brand-mark" aria-hidden="true">K</span>
           <span class="brand-name">Kuma's Dock</span>
-          <span class="version">v1.3</span>
+          <span class="version">v1.4.1</span>
         </button>
       </header>
+
+      <aside class="shared-banner" id="shared-banner" hidden>
+        <span class="shared-banner-icon" aria-hidden="true">↗</span>
+        <span><strong>公開分享 · 唯讀</strong><small>此頁只顯示分享者設為公開的連結，無法編輯內容。</small></span>
+      </aside>
 
       <main>
         <section class="page is-active" id="dock-page" aria-labelledby="dock-title">
@@ -155,13 +161,17 @@
         </section>
       </main>
 
-      <footer>Personal workspace · Kuma's Dock v1.3</footer>
+      <footer>Personal workspace · Kuma's Dock v1.4.1</footer>
     </div>
 
     <nav class="floating-actions" aria-label="快速操作">
       <button class="fab" id="add-link-button" type="button">
         <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
         <span>新增</span>
+      </button>
+      <button class="fab" id="add-category-button" type="button">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v10H4z"/><path d="M15 14h4M17 12v4"/></svg>
+        <span>分類</span>
       </button>
       <button class="fab is-active" type="button" data-page-link="dock" aria-current="page">
         <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h4A1.5 1.5 0 0 1 11 5.5v4A1.5 1.5 0 0 1 9.5 11h-4A1.5 1.5 0 0 1 4 9.5v-4Zm9 0A1.5 1.5 0 0 1 14.5 4h4A1.5 1.5 0 0 1 20 5.5v4a1.5 1.5 0 0 1-1.5 1.5h-4A1.5 1.5 0 0 1 13 9.5v-4Zm-9 9A1.5 1.5 0 0 1 5.5 13h4a1.5 1.5 0 0 1 1.5 1.5v4A1.5 1.5 0 0 1 9.5 20h-4A1.5 1.5 0 0 1 4 18.5v-4Zm9 0a1.5 1.5 0 0 1 1.5-1.5h4a1.5 1.5 0 0 1 1.5 1.5v4a1.5 1.5 0 0 1-1.5 1.5h-4a1.5 1.5 0 0 1-1.5-1.5v-4Z"/></svg>
@@ -170,6 +180,10 @@
       <button class="fab" type="button" data-page-link="settings">
         <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 15.25A3.25 3.25 0 1 0 12 8.75a3.25 3.25 0 0 0 0 6.5Z"/><path d="M19.43 15.1a1.65 1.65 0 0 0 .33 1.82l.06.06-2.84 2.84-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21h-4v-.06a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06-2.84-2.84.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3v-4h.06a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06 2.84-2.84.06.06a1.65 1.65 0 0 0 1.82.33 1.65 1.65 0 0 0 1-1.51V3h4v.06a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06 2.84 2.84-.06.06a1.65 1.65 0 0 0-.33 1.82 1.65 1.65 0 0 0 1.51 1H21v4h-.06a1.65 1.65 0 0 0-1.51 1Z"/></svg>
         <span>設定</span>
+      </button>
+      <button class="fab" id="share-button" type="button">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.5M8.2 13.2l7.6 4.5"/></svg>
+        <span>分享</span>
       </button>
       <button class="fab" id="lock-button" type="button">
         <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
@@ -206,19 +220,57 @@
           </label>
           <label class="field full-field">
             <span>分類</span>
-            <input id="link-category" type="text" list="category-suggestions" maxlength="24" placeholder="例如：工作" required />
-            <datalist id="category-suggestions"></datalist>
+            <select id="link-category" required></select>
           </label>
           <label class="field">
             <span>圖示</span>
-            <input id="link-icon" type="text" maxlength="4" placeholder="例如：📅" required />
-            <small>可輸入 emoji 或 1–2 個字</small>
+            <span class="icon-select-row">
+              <span class="icon-select-preview material-symbols-outlined" id="icon-select-preview" aria-hidden="true">link</span>
+              <select id="link-icon" required>
+                <option value="mi:link">一般連結</option>
+                <option value="mi:home">首頁</option>
+                <option value="mi:calendar_month">行事曆</option>
+                <option value="mi:event">活動／行程</option>
+                <option value="mi:description">文件</option>
+                <option value="mi:folder">資料夾</option>
+                <option value="mi:cloud">雲端</option>
+                <option value="mi:mail">郵件</option>
+                <option value="mi:chat">聊天</option>
+                <option value="mi:search">搜尋</option>
+                <option value="mi:language">網站</option>
+                <option value="mi:favorite">最愛</option>
+                <option value="mi:star">星號</option>
+                <option value="mi:person">個人</option>
+                <option value="mi:group">群組</option>
+                <option value="mi:work">工作</option>
+                <option value="mi:medical_services">醫療</option>
+                <option value="mi:health_and_safety">健康</option>
+                <option value="mi:school">學習</option>
+                <option value="mi:payments">財務</option>
+                <option value="mi:monitoring">投資／數據</option>
+                <option value="mi:flight">旅遊</option>
+                <option value="mi:map">地圖</option>
+                <option value="mi:restaurant">飲食</option>
+                <option value="mi:shopping_cart">購物</option>
+                <option value="mi:music_note">音樂</option>
+                <option value="mi:movie">影片</option>
+                <option value="mi:settings">設定</option>
+              </select>
+            </span>
+            <small>圖示來自 Google Material Symbols。</small>
           </label>
           <label class="field color-field">
             <span>顏色</span>
             <span class="color-control">
               <input id="link-color" type="color" value="#525252" aria-label="選擇連結顏色" />
               <input id="link-color-text" type="text" value="#525252" maxlength="7" pattern="#[0-9A-Fa-f]{6}" aria-label="顏色代碼" />
+            </span>
+          </label>
+          <label class="public-option full-field">
+            <input id="link-public" type="checkbox" />
+            <span>
+              <strong>允許顯示於分享頁面</strong>
+              <small>未勾選的連結不會包含在分享網址中。</small>
             </span>
           </label>
         </div>
@@ -228,6 +280,96 @@
           <span class="action-spacer"></span>
           <button class="ghost-button" id="cancel-dialog" type="button">取消</button>
           <button class="primary-button" type="submit">儲存</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="category-dialog" aria-labelledby="category-dialog-title">
+      <form id="category-form" method="dialog">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow" id="category-dialog-eyebrow">NEW CATEGORY</p>
+            <h2 id="category-dialog-title">新增分類</h2>
+          </div>
+          <button class="icon-button" type="button" id="close-category-dialog" aria-label="關閉">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+        <label class="field full-field">
+          <span>分類名稱</span>
+          <input id="category-name-input" type="text" maxlength="24" placeholder="例如：工作" required />
+        </label>
+        <div class="category-image-editor">
+          <div class="category-image-preview" id="category-image-preview" aria-label="分類圖片預覽">
+            <span class="material-symbols-outlined" aria-hidden="true">category</span>
+          </div>
+          <div>
+            <strong>分類圖片</strong>
+            <p>可選填；圖片會裁切並壓縮為小圖。</p>
+            <div class="category-image-actions">
+              <label class="secondary-button upload-button">
+                上傳圖檔
+                <input id="category-image-upload" type="file" accept="image/*" />
+              </label>
+              <button class="ghost-button" id="remove-category-image" type="button">移除圖片</button>
+            </div>
+          </div>
+        </div>
+        <p class="form-error" id="category-form-error" role="alert"></p>
+        <div class="dialog-actions">
+          <span class="action-spacer"></span>
+          <button class="ghost-button" id="cancel-category-dialog" type="button">取消</button>
+          <button class="primary-button" id="category-submit-button" type="submit">新增分類</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="share-dialog" aria-labelledby="share-dialog-title">
+      <form method="dialog">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">PUBLIC SNAPSHOT</p>
+            <h2 id="share-dialog-title">分享 Dock</h2>
+          </div>
+          <button class="icon-button" type="button" id="close-share-dialog" aria-label="關閉">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+        <p class="share-summary" id="share-summary"></p>
+        <label class="field full-field">
+          <span>唯讀分享網址</span>
+          <textarea id="share-url" class="share-url" rows="4" readonly></textarea>
+        </label>
+        <p class="share-warning" id="share-warning">此網址是目前公開內容的快照。日後改成私人或刪除連結，不會讓已產生的舊網址失效。</p>
+        <div class="dialog-actions">
+          <span class="action-spacer"></span>
+          <button class="ghost-button" id="native-share-button" type="button">系統分享</button>
+          <button class="primary-button" id="copy-share-button" type="button">複製網址</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="delete-category-dialog" aria-labelledby="delete-category-title">
+      <form method="dialog">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">DELETE CATEGORY</p>
+            <h2 id="delete-category-title">刪除分類</h2>
+          </div>
+          <button class="icon-button" type="button" id="close-delete-category" aria-label="關閉">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+        <p class="delete-category-copy" id="delete-category-copy"></p>
+        <label class="field full-field" id="delete-category-target-field">
+          <span>將原有連結移動至</span>
+          <select id="delete-category-target"></select>
+        </label>
+        <div class="dialog-actions delete-category-actions">
+          <button class="danger-button" id="delete-category-with-links" type="button">連結一起刪除</button>
+          <span class="action-spacer"></span>
+          <button class="ghost-button" id="cancel-delete-category" type="button">取消</button>
+          <button class="primary-button" id="move-links-delete-category" type="button">移動後刪除</button>
         </div>
       </form>
     </dialog>
@@ -270,7 +412,7 @@
     <section class="lock-screen" id="lock-screen" hidden aria-labelledby="unlock-title">
       <form class="unlock-card" id="unlock-form">
         <span class="brand-mark lock-brand" aria-hidden="true">K</span>
-        <p class="eyebrow">KUMA'S DOCK · v1.3</p>
+        <p class="eyebrow">KUMA'S DOCK · v1.4.1</p>
         <h1 id="unlock-title">輸入 PIN</h1>
         <p>此 Dock 已鎖定</p>
         <label class="sr-only" for="unlock-pin">PIN</label>
@@ -282,21 +424,33 @@
 
     <template id="category-template">
       <section class="category-section">
-        <button class="category-header" type="button" aria-expanded="true">
-          <span class="category-title-wrap">
-            <svg class="chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
-            <span class="category-name"></span>
-            <span class="category-count"></span>
+        <div class="category-header">
+          <button class="category-toggle" type="button" aria-expanded="true">
+            <span class="category-title-wrap">
+              <svg class="chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+              <span class="category-image" hidden></span>
+              <span class="category-name"></span>
+              <span class="category-count"></span>
+            </span>
+            <span class="collapse-label">收合</span>
+          </button>
+          <span class="category-controls">
+            <button class="category-edit-button" type="button" aria-label="重新命名或更換分類圖片" title="重新命名或更換分類圖片">
+              <span class="material-symbols-outlined" aria-hidden="true">edit</span>
+            </button>
+            <button class="category-delete-button" type="button" aria-label="刪除分類" title="刪除分類">
+              <span class="material-symbols-outlined" aria-hidden="true">delete</span>
+            </button>
+            <span class="category-drag-handle material-symbols-outlined" draggable="true" role="button" tabindex="0" aria-label="拖曳調整分類順序" title="拖曳調整分類順序">drag_indicator</span>
           </span>
-          <span class="collapse-label">收合</span>
-        </button>
+        </div>
         <div class="link-collection"></div>
       </section>
     </template>
 
     <template id="link-template">
       <article class="dock-item">
-        <a class="dock-link" target="_blank" rel="noopener noreferrer">
+        <a class="dock-link" target="_blank" rel="noopener noreferrer" draggable="false">
           <span class="link-icon" aria-hidden="true"></span>
           <span class="link-copy">
             <strong class="link-name"></strong>
@@ -305,6 +459,7 @@
           </span>
           <svg class="external-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M14 5h5v5M19 5l-8 8"/><path d="M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>
         </a>
+        <span class="link-drag-handle material-symbols-outlined" aria-hidden="true" title="拖曳調整順序或分類">drag_indicator</span>
         <button class="edit-link-button" type="button" aria-label="編輯連結">
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>
         </button>

@@ -1,5 +1,5 @@
-const STORAGE_KEY = "kumas-dock-v1.3";
-const LEGACY_STORAGE_KEYS = ["kumas-dock-v1.2", "kumas-dock-v1.1", "kumas-dock-v1"];
+const STORAGE_KEY = "kumas-dock-v1.4.1";
+const LEGACY_STORAGE_KEYS = ["kumas-dock-v1.4", "kumas-dock-v1.3", "kumas-dock-v1.2", "kumas-dock-v1.1", "kumas-dock-v1"];
 const GOOGLE_CONFIG_KEY = "kumas-dock-google-config";
 const DRIVE_FILE_NAME = "kumas-dock-data.json";
 const LEGACY_DRIVE_FILE_NAMES = ["kumas-dock-v1.1.json"];
@@ -12,18 +12,20 @@ function createId() {
 
 function createDefaultState() {
   return {
-    version: "1.3",
+    version: "1.4.1",
     layout: "grid",
+    categories: ["日常", "工具"],
+    categoryImages: {},
     collapsed: {},
     updatedAt: null,
     googleClientId: "",
     background: { source: "", opacity: 35, temperature: 0 },
     lock: { enabled: false, salt: "", verifier: "", iterations: PIN_ITERATIONS },
     links: [
-      { id: createId(), name: "Google Calendar", url: "https://calendar.google.com", category: "日常", icon: "31", color: "#52677a", note: "行程與排班" },
-      { id: createId(), name: "Google Drive", url: "https://drive.google.com", category: "日常", icon: "D", color: "#65725d", note: "檔案與備份" },
-      { id: createId(), name: "ChatGPT", url: "https://chatgpt.com", category: "工具", icon: "✦", color: "#353b39", note: "工作與研究" },
-      { id: createId(), name: "GitHub", url: "https://github.com", category: "工具", icon: "GH", color: "#46464b", note: "專案與版本" }
+      { id: createId(), name: "Google Calendar", url: "https://calendar.google.com", category: "日常", icon: "mi:calendar_month", color: "#52677a", note: "行程與排班", isPublic: false },
+      { id: createId(), name: "Google Drive", url: "https://drive.google.com", category: "日常", icon: "mi:cloud", color: "#65725d", note: "檔案與備份", isPublic: false },
+      { id: createId(), name: "ChatGPT", url: "https://chatgpt.com", category: "工具", icon: "mi:chat", color: "#353b39", note: "工作與研究", isPublic: false },
+      { id: createId(), name: "GitHub", url: "https://github.com", category: "工具", icon: "mi:work", color: "#46464b", note: "專案與版本", isPublic: false }
     ]
   };
 }
@@ -42,11 +44,12 @@ const elements = {
   name: document.querySelector("#link-name"),
   url: document.querySelector("#link-url"),
   note: document.querySelector("#link-note"),
+  publicCheckbox: document.querySelector("#link-public"),
   category: document.querySelector("#link-category"),
   icon: document.querySelector("#link-icon"),
+  iconPreview: document.querySelector("#icon-select-preview"),
   color: document.querySelector("#link-color"),
   colorText: document.querySelector("#link-color-text"),
-  categorySuggestions: document.querySelector("#category-suggestions"),
   deleteButton: document.querySelector("#delete-link-button"),
   closeButton: document.querySelector("#close-dialog"),
   cancelButton: document.querySelector("#cancel-dialog"),
@@ -66,6 +69,36 @@ const elements = {
   toast: document.querySelector("#toast"),
   categoryTemplate: document.querySelector("#category-template"),
   linkTemplate: document.querySelector("#link-template"),
+  addCategoryButton: document.querySelector("#add-category-button"),
+  categoryDialog: document.querySelector("#category-dialog"),
+  categoryForm: document.querySelector("#category-form"),
+  categoryNameInput: document.querySelector("#category-name-input"),
+  categoryDialogTitle: document.querySelector("#category-dialog-title"),
+  categoryDialogEyebrow: document.querySelector("#category-dialog-eyebrow"),
+  categorySubmitButton: document.querySelector("#category-submit-button"),
+  categoryImagePreview: document.querySelector("#category-image-preview"),
+  categoryImageUpload: document.querySelector("#category-image-upload"),
+  removeCategoryImage: document.querySelector("#remove-category-image"),
+  categoryFormError: document.querySelector("#category-form-error"),
+  closeCategoryDialog: document.querySelector("#close-category-dialog"),
+  cancelCategoryDialog: document.querySelector("#cancel-category-dialog"),
+  deleteCategoryDialog: document.querySelector("#delete-category-dialog"),
+  deleteCategoryCopy: document.querySelector("#delete-category-copy"),
+  deleteCategoryTargetField: document.querySelector("#delete-category-target-field"),
+  deleteCategoryTarget: document.querySelector("#delete-category-target"),
+  closeDeleteCategory: document.querySelector("#close-delete-category"),
+  cancelDeleteCategory: document.querySelector("#cancel-delete-category"),
+  moveLinksDeleteCategory: document.querySelector("#move-links-delete-category"),
+  deleteCategoryWithLinks: document.querySelector("#delete-category-with-links"),
+  shareButton: document.querySelector("#share-button"),
+  shareDialog: document.querySelector("#share-dialog"),
+  closeShareDialog: document.querySelector("#close-share-dialog"),
+  shareSummary: document.querySelector("#share-summary"),
+  shareUrl: document.querySelector("#share-url"),
+  shareWarning: document.querySelector("#share-warning"),
+  copyShareButton: document.querySelector("#copy-share-button"),
+  nativeShareButton: document.querySelector("#native-share-button"),
+  sharedBanner: document.querySelector("#shared-banner"),
   googleInput: document.querySelector("#google-oauth-input"),
   authorizedOrigin: document.querySelector("#authorized-origin"),
   saveGoogleConfig: document.querySelector("#save-google-config"),
@@ -93,7 +126,9 @@ const elements = {
 };
 
 let localStateWasSaved = Boolean(localStorage.getItem(STORAGE_KEY) || LEGACY_STORAGE_KEYS.some((key) => localStorage.getItem(key)));
-let state = loadState();
+const sharedPayload = readSharedPayload();
+const sharedMode = Boolean(sharedPayload);
+let state = sharedMode ? sanitizeSharedState(sharedPayload) : loadState();
 let accessToken = "";
 let driveFileId = "";
 let cloudSaveTimer;
@@ -101,13 +136,33 @@ let toastTimer;
 let syncing = false;
 let pinDialogShouldLock = false;
 let sessionUnlocked = false;
+let dragState = null;
+let deletingCategoryName = "";
+let editingCategoryName = "";
+let pendingCategoryImage = "";
 
 function sanitizeState(raw) {
   const fallback = createDefaultState();
   if (!raw || !Array.isArray(raw.links)) return fallback;
+  const cleanLinks = raw.links.filter(isValidLink).map((link) => ({
+    ...link,
+    category: link.category.trim() || "未分類",
+    note: typeof link.note === "string" ? link.note : "",
+    isPublic: link.isPublic === true
+  }));
+  const derivedCategories = [...new Set(cleanLinks.map((link) => link.category))];
+  const savedCategories = Array.isArray(raw.categories)
+    ? raw.categories.filter((name) => typeof name === "string" && name.trim()).map((name) => name.trim())
+    : [];
+  const categories = [...new Set([...savedCategories, ...derivedCategories])];
   return {
-    version: "1.3",
+    version: "1.4.1",
     layout: raw.layout === "list" ? "list" : "grid",
+    categories,
+    categoryImages: Object.fromEntries(categories.flatMap((name) => {
+      const source = raw.categoryImages?.[name];
+      return typeof source === "string" && source ? [[name, source]] : [];
+    })),
     collapsed: raw.collapsed && typeof raw.collapsed === "object" ? raw.collapsed : {},
     updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : null,
     googleClientId: typeof raw.googleClientId === "string" ? raw.googleClientId : "",
@@ -122,7 +177,7 @@ function sanitizeState(raw) {
       verifier: String(raw.lock.verifier),
       iterations: Number(raw.lock.iterations) || PIN_ITERATIONS
     } : fallback.lock,
-    links: raw.links.filter(isValidLink).map((link) => ({ ...link, note: typeof link.note === "string" ? link.note : "" }))
+    links: cleanLinks
   };
 }
 
@@ -144,12 +199,143 @@ function clampNumber(value, minimum, maximum, fallback) {
   return Number.isFinite(number) ? Math.min(maximum, Math.max(minimum, number)) : fallback;
 }
 
+function encodeSharePayload(payload) {
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 8192) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 8192));
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function decodeSharePayload(value) {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
+  const binary = atob(padded);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+function readSharedPayload() {
+  try {
+    const encoded = new URLSearchParams(location.hash.slice(1)).get("share");
+    return encoded ? decodeSharePayload(encoded) : null;
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeSharedState(raw) {
+  const fallback = createDefaultState();
+  const links = Array.isArray(raw?.links)
+    ? raw.links.filter(isValidLink).flatMap((link) => {
+      try {
+        return [{
+          id: link.id,
+          name: link.name.slice(0, 40),
+          url: safeUrl(link.url),
+          category: (link.category.trim() || "未分類").slice(0, 24),
+          icon: link.icon.slice(0, 40),
+          color: /^#[0-9a-f]{6}$/i.test(link.color) ? link.color : "#525252",
+          note: typeof link.note === "string" ? link.note.slice(0, 100) : "",
+          isPublic: true
+        }];
+      } catch { return []; }
+    })
+    : [];
+  const derivedCategories = [...new Set(links.map((link) => link.category))];
+  const requestedCategories = Array.isArray(raw?.categories)
+    ? raw.categories.filter((name) => typeof name === "string" && derivedCategories.includes(name))
+    : [];
+  const categories = [...new Set([...requestedCategories, ...derivedCategories])];
+  const source = typeof raw?.background?.source === "string" && /^https?:\/\//i.test(raw.background.source)
+    ? raw.background.source
+    : "";
+  return {
+    version: "1.4.1",
+    layout: raw?.layout === "list" ? "list" : "grid",
+    categories,
+    categoryImages: Object.fromEntries(categories.flatMap((name) => {
+      const image = raw?.categoryImages?.[name];
+      return typeof image === "string" && (/^data:image\/(?:webp|png|jpeg);base64,/i.test(image) || /^https?:\/\//i.test(image)) ? [[name, image]] : [];
+    })),
+    collapsed: {},
+    updatedAt: null,
+    googleClientId: "",
+    background: {
+      source,
+      opacity: clampNumber(raw?.background?.opacity, 0, 100, 35),
+      temperature: clampNumber(raw?.background?.temperature, -100, 100, 0)
+    },
+    lock: fallback.lock,
+    links
+  };
+}
+
+function createPublicSnapshot() {
+  const links = state.links.filter((link) => link.isPublic).map(({ id, name, url, note, category, icon, color }) => ({
+    id, name, url, note, category, icon, color
+  }));
+  const usedCategories = new Set(links.map((link) => link.category));
+  const categories = state.categories.filter((name) => usedCategories.has(name));
+  const categoryImages = Object.fromEntries(categories.flatMap((name) => state.categoryImages[name] ? [[name, state.categoryImages[name]]] : []));
+  return {
+    v: 1,
+    layout: state.layout,
+    categories,
+    categoryImages,
+    links,
+    background: {
+      source: /^https?:\/\//i.test(state.background.source) ? state.background.source : "",
+      opacity: state.background.opacity,
+      temperature: state.background.temperature
+    }
+  };
+}
+
+function buildShareUrl() {
+  const baseUrl = location.href.split("#")[0];
+  return `${baseUrl}#share=${encodeSharePayload(createPublicSnapshot())}`;
+}
+
+async function copyText(value) {
+  try {
+    await navigator.clipboard.writeText(value);
+  } catch {
+    elements.shareUrl.focus();
+    elements.shareUrl.select();
+    if (!document.execCommand("copy")) throw new Error("無法自動複製，請手動選取網址");
+  }
+}
+
+function openShareDialog() {
+  const publicCount = state.links.filter((link) => link.isPublic).length;
+  if (!publicCount) {
+    showToast("請先在連結設定中開啟至少一個公開連結");
+    return;
+  }
+  const shareUrl = buildShareUrl();
+  elements.shareUrl.value = shareUrl;
+  elements.shareSummary.textContent = `這次會分享 ${publicCount} 個公開連結；私人連結、PIN、Google 設定與上傳的背景圖不會包含在內。`;
+  const isLong = shareUrl.length > 60000;
+  elements.shareWarning.textContent = isLong
+    ? "分享網址偏長，分類圖片可能讓部分通訊軟體截斷網址。建議縮減分類圖片後再分享。此網址仍是不可撤回的內容快照。"
+    : "此網址是目前公開內容的快照。日後改成私人或刪除連結，不會讓已產生的舊網址失效。";
+  elements.nativeShareButton.hidden = typeof navigator.share !== "function";
+  elements.shareDialog.showModal();
+}
+
 function saveStateLocal() {
+  if (sharedMode) return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   localStateWasSaved = true;
 }
 
 function markChanged({ render = true } = {}) {
+  if (sharedMode) {
+    if (render) renderAll();
+    return;
+  }
   state.updatedAt = new Date().toISOString();
   saveStateLocal();
   if (render) renderAll();
@@ -182,37 +368,82 @@ function showPage(pageName) {
 }
 
 function groupedLinks() {
-  return state.links.reduce((groups, link) => {
+  const groups = new Map(state.categories.map((name) => [name, []]));
+  state.links.forEach((link) => {
     const category = link.category.trim() || "未分類";
     if (!groups.has(category)) groups.set(category, []);
     groups.get(category).push(link);
-    return groups;
-  }, new Map());
+  });
+  return groups;
+}
+
+function clearDragIndicators() {
+  document.querySelectorAll(".is-dragging, .link-drop-before, .link-drop-after, .is-link-drop-target, .category-drop-before, .category-drop-after")
+    .forEach((node) => node.classList.remove("is-dragging", "link-drop-before", "link-drop-after", "is-link-drop-target", "category-drop-before", "category-drop-after"));
+}
+
+function moveLink(linkId, targetCategory, targetLinkId = "", position = "after") {
+  const sourceIndex = state.links.findIndex((link) => link.id === linkId);
+  if (sourceIndex < 0) return;
+  const [moved] = state.links.splice(sourceIndex, 1);
+  moved.category = targetCategory;
+  let insertIndex;
+  if (targetLinkId) {
+    const targetIndex = state.links.findIndex((link) => link.id === targetLinkId);
+    insertIndex = targetIndex < 0 ? state.links.length : targetIndex + (position === "after" ? 1 : 0);
+  } else {
+    insertIndex = state.links.reduce((last, link, index) => link.category === targetCategory ? index + 1 : last, state.links.length);
+  }
+  state.links.splice(insertIndex, 0, moved);
+  clearDragIndicators();
+  markChanged();
+}
+
+function moveCategory(sourceName, targetName, position) {
+  if (sourceName === targetName) return;
+  const sourceIndex = state.categories.indexOf(sourceName);
+  if (sourceIndex < 0) return;
+  state.categories.splice(sourceIndex, 1);
+  const targetIndex = state.categories.indexOf(targetName);
+  state.categories.splice(targetIndex + (position === "after" ? 1 : 0), 0, sourceName);
+  clearDragIndicators();
+  markChanged();
 }
 
 function renderDock() {
   elements.categories.replaceChildren();
   const groups = groupedLinks();
-  elements.emptyState.hidden = state.links.length !== 0;
+  elements.emptyState.hidden = state.links.length !== 0 || state.categories.length !== 0;
 
   groups.forEach((links, categoryName) => {
     const fragment = elements.categoryTemplate.content.cloneNode(true);
     const section = fragment.querySelector(".category-section");
-    const header = fragment.querySelector(".category-header");
+    const toggle = fragment.querySelector(".category-toggle");
     const collection = fragment.querySelector(".link-collection");
+    const editButton = fragment.querySelector(".category-edit-button");
+    const deleteButton = fragment.querySelector(".category-delete-button");
+    const dragHandle = fragment.querySelector(".category-drag-handle");
+    const categoryImage = fragment.querySelector(".category-image");
     const isCollapsed = Boolean(state.collapsed[categoryName]);
 
+    if (sharedMode) fragment.querySelector(".category-controls").remove();
+
+    section.dataset.category = categoryName;
     fragment.querySelector(".category-name").textContent = categoryName;
     fragment.querySelector(".category-count").textContent = links.length;
+    if (state.categoryImages[categoryName]) {
+      categoryImage.style.backgroundImage = backgroundImageValue(state.categoryImages[categoryName]);
+      categoryImage.hidden = false;
+    }
     fragment.querySelector(".collapse-label").textContent = isCollapsed ? "展開" : "收合";
     section.classList.toggle("is-collapsed", isCollapsed);
     collection.classList.toggle("list-layout", state.layout === "list");
-    header.setAttribute("aria-expanded", String(!isCollapsed));
+    toggle.setAttribute("aria-expanded", String(!isCollapsed));
 
-    header.addEventListener("click", () => {
+    toggle.addEventListener("click", () => {
       const collapsing = !state.collapsed[categoryName];
       state.collapsed[categoryName] = collapsing;
-      header.setAttribute("aria-expanded", String(!collapsing));
+      toggle.setAttribute("aria-expanded", String(!collapsing));
       section.querySelector(".collapse-label").textContent = collapsing ? "展開" : "收合";
 
       if (collapsing) {
@@ -239,41 +470,116 @@ function renderDock() {
         collection.removeEventListener("transitionend", finishAnimation);
       };
       collection.addEventListener("transitionend", finishAnimation);
-      markChanged({ render: false });
+      if (!sharedMode) markChanged({ render: false });
     });
 
-    links.forEach((link) => collection.append(createLinkCard(link)));
+    if (!sharedMode) {
+      editButton.addEventListener("click", () => openCategoryDialog(categoryName));
+      deleteButton.addEventListener("click", () => openDeleteCategoryDialog(categoryName));
+      dragHandle.addEventListener("dragstart", (event) => {
+        dragState = { type: "category", name: categoryName };
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", `category:${categoryName}`);
+        section.classList.add("is-dragging");
+      });
+      dragHandle.addEventListener("dragend", () => { dragState = null; clearDragIndicators(); });
+
+      section.addEventListener("dragover", (event) => {
+        if (dragState?.type !== "category" || dragState.name === categoryName) return;
+        event.preventDefault();
+        clearDragIndicators();
+        const position = event.clientY < section.getBoundingClientRect().top + section.offsetHeight / 2 ? "before" : "after";
+        section.classList.add(position === "before" ? "category-drop-before" : "category-drop-after");
+      });
+      section.addEventListener("drop", (event) => {
+        if (dragState?.type !== "category") return;
+        event.preventDefault();
+        const position = section.classList.contains("category-drop-before") ? "before" : "after";
+        moveCategory(dragState.name, categoryName, position);
+        dragState = null;
+      });
+
+      collection.addEventListener("dragover", (event) => {
+        if (dragState?.type !== "link") return;
+        event.preventDefault();
+        event.stopPropagation();
+        collection.classList.add("is-link-drop-target");
+      });
+      collection.addEventListener("dragleave", (event) => {
+        if (!collection.contains(event.relatedTarget)) collection.classList.remove("is-link-drop-target");
+      });
+      collection.addEventListener("drop", (event) => {
+        if (dragState?.type !== "link") return;
+        event.preventDefault();
+        event.stopPropagation();
+        moveLink(dragState.id, categoryName);
+        dragState = null;
+      });
+    }
+
+    links.forEach((link) => collection.append(createLinkCard(link, categoryName)));
     elements.categories.append(fragment);
   });
 }
 
-function createLinkCard(link) {
+function createLinkCard(link, categoryName) {
   const fragment = elements.linkTemplate.content.cloneNode(true);
   const article = fragment.querySelector(".dock-item");
   const anchor = fragment.querySelector(".dock-link");
+  const icon = fragment.querySelector(".link-icon");
+  if (sharedMode) {
+    fragment.querySelector(".edit-link-button").remove();
+    fragment.querySelector(".link-drag-handle").remove();
+  }
+  article.draggable = !sharedMode;
+  article.dataset.linkId = link.id;
   anchor.href = link.url;
   anchor.style.setProperty("--link-color", link.color);
   anchor.setAttribute("aria-label", `開啟 ${link.name}`);
-  fragment.querySelector(".link-icon").textContent = link.icon;
+  if (link.icon.startsWith("mi:")) {
+    icon.classList.add("material-symbols-outlined");
+    icon.textContent = link.icon.slice(3);
+  } else {
+    icon.textContent = link.icon;
+  }
   fragment.querySelector(".link-name").textContent = link.name;
   const note = fragment.querySelector(".link-note");
   note.textContent = link.note;
   note.hidden = !link.note;
   fragment.querySelector(".link-host").textContent = getHost(link.url);
-  fragment.querySelector(".edit-link-button").addEventListener("click", () => openLinkDialog(link));
+  if (!sharedMode) {
+    fragment.querySelector(".edit-link-button").addEventListener("click", () => openLinkDialog(link));
+    article.addEventListener("dragstart", (event) => {
+      dragState = { type: "link", id: link.id };
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", `link:${link.id}`);
+      requestAnimationFrame(() => article.classList.add("is-dragging"));
+    });
+    article.addEventListener("dragend", () => { dragState = null; clearDragIndicators(); });
+    article.addEventListener("dragover", (event) => {
+      if (dragState?.type !== "link" || dragState.id === link.id) return;
+      event.preventDefault();
+      event.stopPropagation();
+      document.querySelectorAll(".link-drop-before, .link-drop-after").forEach((node) => node.classList.remove("link-drop-before", "link-drop-after"));
+      const position = event.clientY < article.getBoundingClientRect().top + article.offsetHeight / 2 ? "before" : "after";
+      article.classList.add(position === "before" ? "link-drop-before" : "link-drop-after");
+    });
+    article.addEventListener("drop", (event) => {
+      if (dragState?.type !== "link" || dragState.id === link.id) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const position = article.classList.contains("link-drop-before") ? "before" : "after";
+      moveLink(dragState.id, categoryName, link.id, position);
+      dragState = null;
+    });
+  }
   return article;
 }
 
 function renderSettings() {
   document.querySelectorAll('input[name="layout"]').forEach((radio) => { radio.checked = radio.value === state.layout; });
-  const categories = groupedLinks();
   elements.linkCount.textContent = state.links.length;
-  elements.categoryCount.textContent = categories.size;
-  elements.categorySuggestions.replaceChildren(...Array.from(categories.keys()).map((name) => {
-    const option = document.createElement("option");
-    option.value = name;
-    return option;
-  }));
+  elements.categoryCount.textContent = state.categories.length;
   elements.pinStatus.textContent = state.lock.enabled ? "已啟用" : "尚未設定";
   elements.pinStatus.classList.toggle("is-connected", state.lock.enabled);
   elements.changePinButton.textContent = state.lock.enabled ? "修改 PIN" : "設定 PIN";
@@ -322,17 +628,13 @@ function applyBackground() {
 
 function loadImageFile(file) {
   return new Promise((resolve, reject) => {
-    const objectUrl = URL.createObjectURL(file);
+    const reader = new FileReader();
     const image = new Image();
-    image.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-      resolve(image);
-    };
-    image.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error("無法讀取這張圖片"));
-    };
-    image.src = objectUrl;
+    reader.onload = () => { image.src = reader.result; };
+    reader.onerror = () => reject(new Error("無法讀取圖片檔案"));
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("瀏覽器無法解碼這張圖片，請改用 JPG、PNG 或 WebP"));
+    reader.readAsDataURL(file);
   });
 }
 
@@ -350,12 +652,68 @@ function resizeImage(image, maxDimension, quality) {
 
 async function compressBackground(file) {
   if (!file.type.startsWith("image/")) throw new Error("請選擇圖片檔案");
+  if (/hei[cf]/i.test(file.type) || /\.hei[cf]$/i.test(file.name)) throw new Error("HEIC／HEIF 暫不支援，請先轉成 JPG 或 PNG");
   if (file.size > 20 * 1024 * 1024) throw new Error("原始圖片請勿超過 20 MB");
   const image = await loadImageFile(file);
   let dataUrl = resizeImage(image, 1920, 0.82);
   if (dataUrl.length > 2000000) dataUrl = resizeImage(image, 1280, 0.72);
   if (dataUrl.length > 2000000) throw new Error("圖片壓縮後仍過大，請改用較小的圖片");
   return dataUrl;
+}
+
+function resizeSquareImage(image, size = 112, quality = 0.78) {
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext("2d", { alpha: false });
+  const sourceSize = Math.min(image.naturalWidth, image.naturalHeight);
+  const sourceX = (image.naturalWidth - sourceSize) / 2;
+  const sourceY = (image.naturalHeight - sourceSize) / 2;
+  context.fillStyle = "#e8e8e5";
+  context.fillRect(0, 0, size, size);
+  context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, size, size);
+  return canvas.toDataURL("image/webp", quality);
+}
+
+async function compressCategoryImage(file) {
+  if (!file.type.startsWith("image/")) throw new Error("請選擇圖片檔案");
+  if (/hei[cf]/i.test(file.type) || /\.hei[cf]$/i.test(file.name)) throw new Error("HEIC／HEIF 暫不支援，請先轉成 JPG、PNG 或 WebP");
+  if (file.size > 10 * 1024 * 1024) throw new Error("分類圖片請勿超過 10 MB");
+  return resizeSquareImage(await loadImageFile(file));
+}
+
+function renderCategoryImagePreview() {
+  elements.categoryImagePreview.style.backgroundImage = pendingCategoryImage ? backgroundImageValue(pendingCategoryImage) : "none";
+  elements.categoryImagePreview.classList.toggle("has-image", Boolean(pendingCategoryImage));
+  elements.removeCategoryImage.disabled = !pendingCategoryImage;
+}
+
+function populateCategoryOptions(selectedCategory = "") {
+  if (!state.categories.length) state.categories.push("未分類");
+  elements.category.replaceChildren(...state.categories.map((name) => {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    return option;
+  }));
+  elements.category.value = state.categories.includes(selectedCategory) ? selectedCategory : state.categories[0];
+}
+
+function updateIconPreview() {
+  const value = elements.icon.value;
+  const isMaterial = value.startsWith("mi:");
+  elements.iconPreview.classList.toggle("material-symbols-outlined", isMaterial);
+  elements.iconPreview.textContent = isMaterial ? value.slice(3) : value;
+}
+
+function prepareIconOption(value) {
+  elements.icon.querySelectorAll(".temporary-icon-option").forEach((option) => option.remove());
+  if ([...elements.icon.options].some((option) => option.value === value)) return;
+  const option = document.createElement("option");
+  option.value = value;
+  option.textContent = `原有圖示（${value}）`;
+  option.className = "temporary-icon-option";
+  elements.icon.append(option);
 }
 
 function openLinkDialog(link = null) {
@@ -368,12 +726,59 @@ function openLinkDialog(link = null) {
   elements.name.value = link?.name ?? "";
   elements.url.value = link?.url ?? "";
   elements.note.value = link?.note ?? "";
-  elements.category.value = link?.category ?? (groupedLinks().keys().next().value || "日常");
-  elements.icon.value = link?.icon ?? "↗";
+  elements.publicCheckbox.checked = link?.isPublic === true;
+  populateCategoryOptions(link?.category ?? "");
+  const iconValue = link?.icon ?? "mi:link";
+  prepareIconOption(iconValue);
+  elements.icon.value = iconValue;
+  updateIconPreview();
   elements.color.value = link?.color ?? "#525252";
   elements.colorText.value = link?.color ?? "#525252";
   elements.dialog.showModal();
   requestAnimationFrame(() => elements.name.focus());
+}
+
+function openCategoryDialog(categoryName = "") {
+  elements.categoryForm.reset();
+  elements.categoryFormError.textContent = "";
+  editingCategoryName = categoryName;
+  pendingCategoryImage = categoryName ? state.categoryImages[categoryName] || "" : "";
+  const editing = Boolean(categoryName);
+  elements.categoryDialogTitle.textContent = editing ? "編輯分類" : "新增分類";
+  elements.categoryDialogEyebrow.textContent = editing ? "EDIT CATEGORY" : "NEW CATEGORY";
+  elements.categorySubmitButton.textContent = editing ? "儲存變更" : "新增分類";
+  elements.categoryNameInput.value = categoryName;
+  renderCategoryImagePreview();
+  elements.categoryDialog.showModal();
+  requestAnimationFrame(() => {
+    elements.categoryNameInput.focus();
+    if (editing) elements.categoryNameInput.select();
+  });
+}
+
+function openDeleteCategoryDialog(categoryName) {
+  deletingCategoryName = categoryName;
+  const linkCount = state.links.filter((link) => link.category === categoryName).length;
+  const targets = state.categories.filter((name) => name !== categoryName);
+  elements.deleteCategoryCopy.textContent = linkCount
+    ? `「${categoryName}」內有 ${linkCount} 個連結，請選擇移動至其他分類，或將連結一起刪除。`
+    : `「${categoryName}」目前沒有連結，可以直接刪除。`;
+  elements.deleteCategoryTarget.replaceChildren(...targets.map((name) => {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    return option;
+  }));
+  elements.deleteCategoryTargetField.hidden = !linkCount || !targets.length;
+  elements.moveLinksDeleteCategory.hidden = !linkCount || !targets.length;
+  elements.deleteCategoryWithLinks.textContent = linkCount ? "連結一起刪除" : "刪除分類";
+  elements.deleteCategoryDialog.showModal();
+}
+
+function removeCategory(categoryName) {
+  state.categories = state.categories.filter((name) => name !== categoryName);
+  delete state.collapsed[categoryName];
+  delete state.categoryImages[categoryName];
 }
 
 function closeLinkDialog() { elements.dialog.close(); }
@@ -642,9 +1047,97 @@ function hideLockScreen() {
 
 elements.navLinks.forEach((link) => link.addEventListener("click", () => showPage(link.dataset.pageLink)));
 elements.addButtons.forEach((button) => button.addEventListener("click", () => openLinkDialog()));
+elements.addCategoryButton.addEventListener("click", () => openCategoryDialog());
 elements.closeButton.addEventListener("click", closeLinkDialog);
 elements.cancelButton.addEventListener("click", closeLinkDialog);
 elements.dialog.addEventListener("click", (event) => { if (event.target === elements.dialog) closeLinkDialog(); });
+elements.icon.addEventListener("change", updateIconPreview);
+
+elements.closeCategoryDialog.addEventListener("click", () => elements.categoryDialog.close());
+elements.cancelCategoryDialog.addEventListener("click", () => elements.categoryDialog.close());
+elements.categoryImageUpload.addEventListener("change", async () => {
+  const file = elements.categoryImageUpload.files?.[0];
+  if (!file) return;
+  elements.categoryFormError.textContent = "正在處理圖片…";
+  try {
+    pendingCategoryImage = await compressCategoryImage(file);
+    renderCategoryImagePreview();
+    elements.categoryFormError.textContent = "";
+  } catch (error) {
+    elements.categoryFormError.textContent = error.message;
+  } finally {
+    elements.categoryImageUpload.value = "";
+  }
+});
+elements.removeCategoryImage.addEventListener("click", () => {
+  pendingCategoryImage = "";
+  renderCategoryImagePreview();
+});
+elements.categoryForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const name = elements.categoryNameInput.value.trim();
+  if (!name) return;
+  if (state.categories.some((category) => category !== editingCategoryName && category.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+    elements.categoryFormError.textContent = "已經有同名分類。";
+    return;
+  }
+  if (editingCategoryName) {
+    const index = state.categories.indexOf(editingCategoryName);
+    if (index >= 0) state.categories[index] = name;
+    state.links.forEach((link) => { if (link.category === editingCategoryName) link.category = name; });
+    if (state.collapsed[editingCategoryName] !== undefined) {
+      state.collapsed[name] = state.collapsed[editingCategoryName];
+      if (name !== editingCategoryName) delete state.collapsed[editingCategoryName];
+    }
+    if (name !== editingCategoryName) delete state.categoryImages[editingCategoryName];
+  } else {
+    state.categories.push(name);
+  }
+  if (pendingCategoryImage) state.categoryImages[name] = pendingCategoryImage;
+  else delete state.categoryImages[name];
+  markChanged();
+  elements.categoryDialog.close();
+  showToast(editingCategoryName ? `已更新「${name}」分類` : `已新增「${name}」分類`);
+});
+
+elements.shareButton.addEventListener("click", openShareDialog);
+elements.closeShareDialog.addEventListener("click", () => elements.shareDialog.close());
+elements.shareDialog.addEventListener("click", (event) => { if (event.target === elements.shareDialog) elements.shareDialog.close(); });
+elements.copyShareButton.addEventListener("click", async () => {
+  try {
+    await copyText(elements.shareUrl.value);
+    showToast("分享網址已複製");
+  } catch (error) { showToast(error.message); }
+});
+elements.nativeShareButton.addEventListener("click", async () => {
+  try {
+    await navigator.share({ title: "Kuma's Dock", text: "Kuma's Dock 公開連結", url: elements.shareUrl.value });
+  } catch (error) {
+    if (error.name !== "AbortError") showToast("無法開啟系統分享");
+  }
+});
+
+elements.closeDeleteCategory.addEventListener("click", () => elements.deleteCategoryDialog.close());
+elements.cancelDeleteCategory.addEventListener("click", () => elements.deleteCategoryDialog.close());
+elements.moveLinksDeleteCategory.addEventListener("click", () => {
+  const target = elements.deleteCategoryTarget.value;
+  if (!deletingCategoryName || !target) return;
+  state.links.forEach((link) => { if (link.category === deletingCategoryName) link.category = target; });
+  removeCategory(deletingCategoryName);
+  markChanged();
+  elements.deleteCategoryDialog.close();
+  showToast("分類已刪除，連結已移動");
+});
+elements.deleteCategoryWithLinks.addEventListener("click", () => {
+  if (!deletingCategoryName) return;
+  const linkCount = state.links.filter((link) => link.category === deletingCategoryName).length;
+  if (linkCount && !window.confirm(`確定要一起刪除「${deletingCategoryName}」內的 ${linkCount} 個連結嗎？`)) return;
+  state.links = state.links.filter((link) => link.category !== deletingCategoryName);
+  removeCategory(deletingCategoryName);
+  markChanged();
+  elements.deleteCategoryDialog.close();
+  showToast("分類已刪除");
+});
 
 elements.color.addEventListener("input", () => { elements.colorText.value = elements.color.value.toUpperCase(); });
 elements.colorText.addEventListener("input", () => {
@@ -676,7 +1169,8 @@ elements.form.addEventListener("submit", (event) => {
     note: elements.note.value.trim(),
     category: elements.category.value.trim(),
     icon: elements.icon.value.trim(),
-    color: elements.color.value
+    color: elements.color.value,
+    isPublic: elements.publicCheckbox.checked
   };
   const index = state.links.findIndex((link) => link.id === item.id);
   if (index >= 0) state.links[index] = item;
@@ -792,7 +1286,9 @@ elements.unlockForm.addEventListener("submit", async (event) => {
 });
 
 const googleConfig = readGoogleConfig();
-elements.googleInput.value = googleConfig.clientId || state.googleClientId || "";
+elements.googleInput.value = sharedMode ? "" : googleConfig.clientId || state.googleClientId || "";
 elements.authorizedOrigin.value = location.origin === "null" ? "部署到 GitHub Pages 後顯示" : location.origin;
+document.body.classList.toggle("shared-mode", sharedMode);
+elements.sharedBanner.hidden = !sharedMode;
 renderAll();
-if (state.lock.enabled) showLockScreen();
+if (!sharedMode && state.lock.enabled) showLockScreen();
