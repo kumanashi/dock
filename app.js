@@ -1,5 +1,6 @@
-const STORAGE_KEY = "kumas-dock-v1.4.1";
-const LEGACY_STORAGE_KEYS = ["kumas-dock-v1.4", "kumas-dock-v1.3", "kumas-dock-v1.2", "kumas-dock-v1.1", "kumas-dock-v1"];
+const APP_VERSION = "1.4.2";
+const STORAGE_KEY = "kumas-dock-data";
+const LEGACY_STORAGE_KEYS = ["kumas-dock-v1.4.2", "kumas-dock-v1.4.1", "kumas-dock-v1.4", "kumas-dock-v1.3", "kumas-dock-v1.2", "kumas-dock-v1.1", "kumas-dock-v1"];
 const GOOGLE_CONFIG_KEY = "kumas-dock-google-config";
 const DRIVE_FILE_NAME = "kumas-dock-data.json";
 const LEGACY_DRIVE_FILE_NAMES = ["kumas-dock-v1.1.json"];
@@ -12,7 +13,7 @@ function createId() {
 
 function createDefaultState() {
   return {
-    version: "1.4.1",
+    version: APP_VERSION,
     layout: "grid",
     categories: ["日常", "工具"],
     categoryImages: {},
@@ -125,7 +126,7 @@ const elements = {
   unlockError: document.querySelector("#unlock-error")
 };
 
-let localStateWasSaved = Boolean(localStorage.getItem(STORAGE_KEY) || LEGACY_STORAGE_KEYS.some((key) => localStorage.getItem(key)));
+let localStateWasSaved = Boolean(readStorage(STORAGE_KEY) || LEGACY_STORAGE_KEYS.some((key) => readStorage(key)));
 const sharedPayload = readSharedPayload();
 const sharedMode = Boolean(sharedPayload);
 let state = sharedMode ? sanitizeSharedState(sharedPayload) : loadState();
@@ -156,7 +157,7 @@ function sanitizeState(raw) {
     : [];
   const categories = [...new Set([...savedCategories, ...derivedCategories])];
   return {
-    version: "1.4.1",
+    version: APP_VERSION,
     layout: raw.layout === "list" ? "list" : "grid",
     categories,
     categoryImages: Object.fromEntries(categories.flatMap((name) => {
@@ -183,11 +184,16 @@ function sanitizeState(raw) {
 
 function loadState() {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY) || LEGACY_STORAGE_KEYS.map((key) => localStorage.getItem(key)).find(Boolean);
+    const saved = readStorage(STORAGE_KEY) || LEGACY_STORAGE_KEYS.map((key) => readStorage(key)).find(Boolean);
     return saved ? sanitizeState(JSON.parse(saved)) : createDefaultState();
   } catch {
     return createDefaultState();
   }
+}
+
+function readStorage(key) {
+  try { return localStorage.getItem(key); }
+  catch { return null; }
 }
 
 function isValidLink(link) {
@@ -252,7 +258,7 @@ function sanitizeSharedState(raw) {
     ? raw.background.source
     : "";
   return {
-    version: "1.4.1",
+    version: APP_VERSION,
     layout: raw?.layout === "list" ? "list" : "grid",
     categories,
     categoryImages: Object.fromEntries(categories.flatMap((name) => {
@@ -278,12 +284,11 @@ function createPublicSnapshot() {
   }));
   const usedCategories = new Set(links.map((link) => link.category));
   const categories = state.categories.filter((name) => usedCategories.has(name));
-  const categoryImages = Object.fromEntries(categories.flatMap((name) => state.categoryImages[name] ? [[name, state.categoryImages[name]]] : []));
   return {
     v: 1,
     layout: state.layout,
     categories,
-    categoryImages,
+    categoryImages: {},
     links,
     background: {
       source: /^https?:\/\//i.test(state.background.source) ? state.background.source : "",
@@ -311,15 +316,21 @@ async function copyText(value) {
 function openShareDialog() {
   const publicCount = state.links.filter((link) => link.isPublic).length;
   if (!publicCount) {
-    showToast("請先在連結設定中開啟至少一個公開連結");
+    elements.shareUrl.value = "";
+    elements.shareSummary.textContent = "目前沒有可分享的連結。請先編輯至少一個連結，並開啟「允許顯示於分享頁面」。";
+    elements.shareWarning.textContent = "私人連結不會出現在分享頁面；設定完成後再次按下分享即可產生唯讀網址。";
+    elements.copyShareButton.disabled = true;
+    elements.nativeShareButton.hidden = true;
+    elements.shareDialog.showModal();
     return;
   }
   const shareUrl = buildShareUrl();
   elements.shareUrl.value = shareUrl;
-  elements.shareSummary.textContent = `這次會分享 ${publicCount} 個公開連結；私人連結、PIN、Google 設定與上傳的背景圖不會包含在內。`;
-  const isLong = shareUrl.length > 60000;
+  elements.shareSummary.textContent = `這次會分享 ${publicCount} 個公開連結；私人連結、PIN、Google 設定與上傳圖片不會包含在內。`;
+  elements.copyShareButton.disabled = false;
+  const isLong = shareUrl.length > 12000;
   elements.shareWarning.textContent = isLong
-    ? "分享網址偏長，分類圖片可能讓部分通訊軟體截斷網址。建議縮減分類圖片後再分享。此網址仍是不可撤回的內容快照。"
+    ? "分享網址包含較多公開連結，部分通訊軟體可能會截斷網址。此網址仍是不可撤回的內容快照。"
     : "此網址是目前公開內容的快照。日後改成私人或刪除連結，不會讓已產生的舊網址失效。";
   elements.nativeShareButton.hidden = typeof navigator.share !== "function";
   elements.shareDialog.showModal();
@@ -327,8 +338,21 @@ function openShareDialog() {
 
 function saveStateLocal() {
   if (sharedMode) return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  localStateWasSaved = true;
+  const legacyBackups = LEGACY_STORAGE_KEYS.flatMap((key) => {
+    const value = readStorage(key);
+    return value === null ? [] : [[key, value]];
+  });
+  try {
+    legacyBackups.forEach(([key]) => localStorage.removeItem(key));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStateWasSaved = true;
+  } catch (error) {
+    legacyBackups.forEach(([key, value]) => {
+      try { localStorage.setItem(key, value); } catch { /* best-effort rollback */ }
+    });
+    if (error?.name === "QuotaExceededError") throw new Error("瀏覽器儲存空間不足，請改用較小的圖片");
+    throw new Error("瀏覽器無法儲存資料，請確認未使用無痕模式或封鎖網站儲存空間");
+  }
 }
 
 function markChanged({ render = true } = {}) {
@@ -655,9 +679,10 @@ async function compressBackground(file) {
   if (/hei[cf]/i.test(file.type) || /\.hei[cf]$/i.test(file.name)) throw new Error("HEIC／HEIF 暫不支援，請先轉成 JPG 或 PNG");
   if (file.size > 20 * 1024 * 1024) throw new Error("原始圖片請勿超過 20 MB");
   const image = await loadImageFile(file);
-  let dataUrl = resizeImage(image, 1920, 0.82);
-  if (dataUrl.length > 2000000) dataUrl = resizeImage(image, 1280, 0.72);
-  if (dataUrl.length > 2000000) throw new Error("圖片壓縮後仍過大，請改用較小的圖片");
+  let dataUrl = resizeImage(image, 1600, 0.78);
+  if (dataUrl.length > 900000) dataUrl = resizeImage(image, 1280, 0.68);
+  if (dataUrl.length > 900000) dataUrl = resizeImage(image, 960, 0.62);
+  if (dataUrl.length > 900000) throw new Error("圖片壓縮後仍過大，請改用較小的圖片");
   return dataUrl;
 }
 
@@ -1081,6 +1106,7 @@ elements.categoryForm.addEventListener("submit", (event) => {
     elements.categoryFormError.textContent = "已經有同名分類。";
     return;
   }
+  const previousState = JSON.parse(JSON.stringify(state));
   if (editingCategoryName) {
     const index = state.categories.indexOf(editingCategoryName);
     if (index >= 0) state.categories[index] = name;
@@ -1095,7 +1121,14 @@ elements.categoryForm.addEventListener("submit", (event) => {
   }
   if (pendingCategoryImage) state.categoryImages[name] = pendingCategoryImage;
   else delete state.categoryImages[name];
-  markChanged();
+  try {
+    markChanged();
+  } catch (error) {
+    state = previousState;
+    renderAll();
+    elements.categoryFormError.textContent = error.message;
+    return;
+  }
   elements.categoryDialog.close();
   showToast(editingCategoryName ? `已更新「${name}」分類` : `已新增「${name}」分類`);
 });
@@ -1172,10 +1205,18 @@ elements.form.addEventListener("submit", (event) => {
     color: elements.color.value,
     isPublic: elements.publicCheckbox.checked
   };
+  const previousState = JSON.parse(JSON.stringify(state));
   const index = state.links.findIndex((link) => link.id === item.id);
   if (index >= 0) state.links[index] = item;
   else state.links.push(item);
-  markChanged();
+  try {
+    markChanged();
+  } catch (error) {
+    state = previousState;
+    renderAll();
+    showToast(error.message);
+    return;
+  }
   closeLinkDialog();
   showToast(index >= 0 ? "連結已更新" : "連結已新增");
 });
@@ -1190,12 +1231,17 @@ elements.deleteButton.addEventListener("click", () => {
 });
 
 elements.applyBackgroundUrl.addEventListener("click", () => {
+  const previousBackground = { ...state.background };
+  const previousUpdatedAt = state.updatedAt;
   try {
     state.background.source = safeUrl(elements.backgroundUrl.value);
     markChanged();
     showToast("背景圖片已套用");
-  } catch {
-    showToast("請輸入有效的 http 或 https 圖片網址");
+  } catch (error) {
+    state.background = previousBackground;
+    state.updatedAt = previousUpdatedAt;
+    renderAll();
+    showToast(error.message.includes("儲存") ? error.message : "請輸入有效的 http 或 https 圖片網址");
   }
 });
 
@@ -1203,11 +1249,16 @@ elements.backgroundUpload.addEventListener("change", async () => {
   const file = elements.backgroundUpload.files?.[0];
   if (!file) return;
   showToast("正在處理背景圖片…");
+  const previousBackground = { ...state.background };
+  const previousUpdatedAt = state.updatedAt;
   try {
     state.background.source = await compressBackground(file);
     markChanged();
     showToast("背景圖片已上傳");
   } catch (error) {
+    state.background = previousBackground;
+    state.updatedAt = previousUpdatedAt;
+    renderAll();
     showToast(error.message);
   } finally {
     elements.backgroundUpload.value = "";
